@@ -16,6 +16,8 @@ trap {
 Startup-Log 'Starting panel'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -Path (Join-Path $PSScriptRoot "GamePreview.cs") -ReferencedAssemblies System.Windows.Forms,System.Drawing,System.Core
+[GamePreview]::AlignDpiToGame()
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -134,8 +136,8 @@ $script:budgetHint=LabelAt $config '最多刷新 100 次' 18 80 240 22 9 '#6B789
 [void](LabelAt $config '游戏窗口尺寸' 285 14 220 24 10)
 $script:resolution=New-Object Windows.Forms.ComboBox
 $resolution.DropDownStyle='DropDownList';$resolution.Location=New-Object Drawing.Point(285,43);$resolution.Size=New-Object Drawing.Size(157,28)
-[void]$resolution.Items.AddRange(@('640 × 360','800 × 450','960 × 540','1280 × 720','1600 × 900'))
-$resolution.SelectedIndex=1;$config.Controls.Add($resolution)
+[void]$resolution.Items.AddRange(@('640 × 360','800 × 450','960 × 540','1280 × 720','1600 × 900','1920 × 1080'))
+$resolution.SelectedIndex=3;$config.Controls.Add($resolution)
 $script:applySize=ButtonAt $config '应用尺寸' 455 40 106
 $script:sizeHint=LabelAt $config '保持 16:9；运行中不可更改尺寸' 285 80 300 23 9 '#6B7890'
 $script:newButton=ButtonAt $config '新建一轮并开始' 610 18 222 '#3068D8'
@@ -172,6 +174,96 @@ $logBox.Font=New-Object Drawing.Font('Microsoft YaHei UI',9)
 $logBox.Text='先打开游戏的秘密商店，再设置预算并开始。启动界面不会自动消费天空石。'
 $form.Controls.Add($logBox)
 $script:footer=LabelAt $form '游戏保持未最小化。停止会等待当前交易核对完成，重启可继续同一轮。' 26 655 848 32 9 '#6B7890'
+# Compact controls above the in-window game area.
+function Compact-Control($control) {
+ foreach($child in @($control.Controls)) {Compact-Control $child}
+ $control.Location=New-Object Drawing.Point([int]($control.Left*0.8),[int]($control.Top*0.8))
+ $control.Size=New-Object Drawing.Size([int]($control.Width*0.8),[int]($control.Height*0.8))
+ $control.Font=New-Object Drawing.Font('Microsoft YaHei UI',([Math]::Max(8,$control.Font.Size*0.8)))
+}
+foreach($control in @($form.Controls)){Compact-Control $control}
+$form.MaximumSize=New-Object Drawing.Size(0,0)
+$form.MinimumSize=New-Object Drawing.Size(916,779)
+$form.ClientSize=New-Object Drawing.Size(900,840)
+$form.MaximumSize=New-Object Drawing.Size(0,0)
+foreach($label in @($form.Controls | Where-Object {$_ -is [Windows.Forms.Label]})) {$label.Visible=$false}
+[void](LabelAt $form '第七史诗 · 商店助手' 28 6 350 25 12)
+$statusLabel.Visible=$true;$statusLabel.SetBounds(748,8,124,22)
+$config.SetBounds(12,36,876,100)
+# Keep original compact controls, but spread the action buttons to the right.
+$newButton.SetBounds(690,12,174,28);$stopButton.SetBounds(690,51,174,28)
+$cards=@($metricValues | ForEach-Object {$_.Parent})
+$metricColors=@('#0099CC','#D32F2F','#006994','#8B0000')
+for($i=0;$i -lt 4;$i++) {
+ $cards[$i].SetBounds((12+$i*220),142,216,26)
+ $labels=@($cards[$i].Controls)
+ $metricColor=[Drawing.ColorTranslator]::FromHtml($metricColors[$i])
+ $labels[0].ForeColor=$metricColor;$metricValues[$i].ForeColor=$metricColor;$metricSubs[$i].ForeColor=$metricColor
+ $labels[0].SetBounds(8,4,82,20)
+ $metricValues[$i].SetBounds(92,3,120,22);$metricValues[$i].Font=New-Object Drawing.Font('Microsoft YaHei UI',10)
+ $metricSubs[$i].Visible=$false
+}
+$rates.SetBounds(12,170,876,25);$rateHint.Visible=$false
+$bookRate.SetBounds(8,3,260,22);$mysticRate.SetBounds(290,3,260,22);$goldLabel.SetBounds(570,3,290,22)
+# Four equal statistic columns with consistent baselines.
+$budgetHint.Visible=$false;$config.Controls.Remove($budgetHint)
+$config.Controls.Add($cards[0]);$cards[0].SetBounds(16,64,160,26)
+$cards[0].Controls[0].SetBounds(0,4,78,22)
+$cards[0].Controls[0].TextAlign=[Drawing.ContentAlignment]::MiddleLeft
+$metricValues[0].SetBounds(78,4,82,22)
+$metricValues[0].TextAlign=[Drawing.ContentAlignment]::MiddleRight
+foreach($label in @($config.Controls | Where-Object {$_ -is [Windows.Forms.Label]})) {
+ if($label.Text -eq '本轮天空石预算') {$label.SetBounds(16,10,160,22)}
+ if($label.Text -eq '游戏窗口尺寸') {$label.SetBounds(236,10,156,22)}
+}
+$rates.Visible=$false
+$goldCard=PanelAt 12 142 216 50
+$goldCard.Controls.Add($goldLabel);$goldLabel.SetBounds(10,5,196,22)
+for($i=1;$i -lt 4;$i++) {
+ $cards[$i].SetBounds((12+$i*220),142,216,50)
+ $labels=@($cards[$i].Controls)
+ $labels[0].SetBounds(10,5,82,20)
+ $metricValues[$i].SetBounds(96,4,110,22)
+ $metricValues[$i].TextAlign=[Drawing.ContentAlignment]::MiddleRight
+}
+$metricSubs[1].Visible=$true;$metricSubs[1].SetBounds(10,28,196,18)
+$metricSubs[1].ForeColor=[Drawing.ColorTranslator]::FromHtml('#6B7890')
+$cards[2].Controls.Add($bookRate);$bookRate.SetBounds(10,28,202,20)
+$cards[3].Controls.Add($mysticRate);$mysticRate.SetBounds(10,28,202,20)
+$bookRate.Font=New-Object Drawing.Font('Microsoft YaHei UI',8)
+$mysticRate.Font=New-Object Drawing.Font('Microsoft YaHei UI',8)
+$statusLabel.TextAlign=[Drawing.ContentAlignment]::MiddleRight
+$budgetInput.SetBounds(16,34,160,25)
+$resolution.SetBounds(236,34,156,25)
+$applySize.SetBounds(400,33,100,28)
+$sizeHint.SetBounds(236,68,330,22);$sizeHint.TextAlign=[Drawing.ContentAlignment]::MiddleLeft
+$newButton.SetBounds(690,12,174,28);$stopButton.SetBounds(690,54,174,28)
+$roundPanel.SetBounds(12,674,876,38)
+$roundList.SetBounds(8,7,426,24);$resumeButton.SetBounds(448,4,112,28);$openButton.SetBounds(568,4,112,28);$clearButton.SetBounds(688,4,174,28)
+$logBox.SetBounds(12,718,876,112)
+$script:gameView=New-Object GamePreview
+$script:gameView.BaseDirectory=$script:base
+$gameView.TopLevel=$false
+$gameView.FormBorderStyle=[Windows.Forms.FormBorderStyle]::None
+$gameView.MinimumSize=New-Object Drawing.Size(0,0)
+$gameView.SetBounds(12,198,876,470)
+$form.Controls.Add($gameView)
+$gameView.Anchor=[Windows.Forms.AnchorStyles]'Top,Bottom,Left,Right'
+$roundPanel.Anchor=[Windows.Forms.AnchorStyles]'Bottom,Left,Right'
+$logBox.Anchor=[Windows.Forms.AnchorStyles]'Bottom,Left,Right'
+$config.Anchor=[Windows.Forms.AnchorStyles]'Top,Left,Right'
+$newButton.Anchor=[Windows.Forms.AnchorStyles]'Top,Right'
+$stopButton.Anchor=[Windows.Forms.AnchorStyles]'Top,Right'
+$statusLabel.Anchor=[Windows.Forms.AnchorStyles]'Top,Right'
+$gameView.Show()
+$resolution.Add_SelectedIndexChanged({
+ $parts=([string]$resolution.SelectedItem) -split ' × '
+ $script:gameView.SourceWidth=[Math]::Max(1280,[int]$parts[0])
+})
+$form.Add_FormClosing({param($sender,$eventArgs)
+ if(!$script:gameView.CanCloseHost()) {$eventArgs.Cancel=$true}
+})
+$form.Add_FormClosed({$script:gameView.Close();$script:gameView.Dispose()})
 $budgetInput.Add_ValueChanged({$budgetHint.Text=('最多刷新 {0:N0} 次；余数 {1} 石不消费' -f [Math]::Floor([double]$budgetInput.Value/3),([int]$budgetInput.Value%3))})
 function Read-State {
  if(!$script:currentDir) {return $null}
@@ -180,8 +272,36 @@ function Read-State {
  return $null
 }
 function Is-Running {return ($null -ne $script:worker -and !$script:worker.HasExited)}
+$script:previewExpanded=$true
+$script:expandedClientHeight=840
+function Update-PreviewLayout {
+ $connected=$script:gameView.GameWindowHandle -ne 0
+ if($connected -eq $script:previewExpanded){return}
+ $form.SuspendLayout()
+ try{
+  if(!$connected){
+   if($form.WindowState -eq [Windows.Forms.FormWindowState]::Normal){$script:expandedClientHeight=[Math]::Max(840,$form.ClientSize.Height)}
+   $form.MinimumSize=New-Object Drawing.Size(916,453)
+   if($form.WindowState -eq [Windows.Forms.FormWindowState]::Normal){$form.ClientSize=New-Object Drawing.Size($form.ClientSize.Width,414)}
+   $gameView.Anchor=[Windows.Forms.AnchorStyles]'Top,Left,Right'
+   $gameView.SetBounds(12,198,($form.ClientSize.Width-24),44)
+   $roundPanel.SetBounds(12,248,($form.ClientSize.Width-24),38)
+   $logBox.SetBounds(12,292,($form.ClientSize.Width-24),[Math]::Max(112,($form.ClientSize.Height-302)))
+  }else{
+   if($form.WindowState -eq [Windows.Forms.FormWindowState]::Normal){$form.ClientSize=New-Object Drawing.Size($form.ClientSize.Width,$script:expandedClientHeight)}
+   $form.MinimumSize=New-Object Drawing.Size(916,779)
+   $gameView.SetBounds(12,198,($form.ClientSize.Width-24),[Math]::Max(44,($form.ClientSize.Height-370)))
+   $gameView.Anchor=[Windows.Forms.AnchorStyles]'Top,Bottom,Left,Right'
+   $roundPanel.SetBounds(12,($form.ClientSize.Height-166),($form.ClientSize.Width-24),38)
+   $logBox.SetBounds(12,($form.ClientSize.Height-122),($form.ClientSize.Width-24),112)
+  }
+  $script:previewExpanded=$connected
+ }finally{$form.ResumeLayout($true)}
+}
 function Refresh-View {
+ Update-PreviewLayout
  $running=Is-Running
+ $script:gameView.ShopRunning=$running
  $state=Read-State
  $newButton.Enabled=!$running -and $null -eq $script:resizeProcess
  $budgetInput.Enabled=!$running;$roundList.Enabled=!$running
@@ -221,6 +341,10 @@ function Refresh-View {
   if($text -and $text -ne $script:lastLog) {$logBox.Text=$text;$logBox.SelectionStart=$logBox.TextLength;$logBox.ScrollToCaret();$script:lastLog=$text}
  }
  $resumeButton.Enabled=$canResume
+ if($script:gameView.IsDockedOrBusy) {
+  $applySize.Enabled=$false;$resolution.Enabled=$false
+  if(!$script:gameView.CanStartShop){$newButton.Enabled=$false;$resumeButton.Enabled=$false}
+ }
 }
 function Load-Rounds {
  $roundList.Items.Clear();$script:sessions=@{}
@@ -233,6 +357,7 @@ function Load-Rounds {
 }
 $roundList.Add_SelectedIndexChanged({if($roundList.SelectedItem){$script:currentDir=$script:sessions[[string]$roundList.SelectedItem];$script:lastLog='';Refresh-View}})
 function Start-Worker {
+ if(!$script:gameView.CanStartShop){throw '请等待高清画面尺寸核对完成，或先恢复游戏。'}
  $state=Read-State
  if(!$state) {throw '找不到本轮预算记录。'}
  if($state.Phase -in @('PurchasePending','RefreshPending')) {throw '上一笔交易尚未核实，不能重试。'}
@@ -243,7 +368,8 @@ function Start-Worker {
  if(Test-Path -LiteralPath $out) {Move-Item -LiteralPath $out -Destination (Join-Path $script:currentDir ('worker-'+(Get-Date -Format 'HHmmssfff')+'.log'))}
  if(Test-Path -LiteralPath $err) {Move-Item -LiteralPath $err -Destination (Join-Path $script:currentDir ('error-'+(Get-Date -Format 'HHmmssfff')+'.log'))}
  $run=Join-Path $script:currentDir ('run-'+(Get-Date -Format 'HHmmssfff'))
- $args='-NoLogo -NoProfile -ExecutionPolicy Bypass -File '+(Quote-Arg (Join-Path $script:base 'Scan-EpicSeven-Shop.ps1'))+' -AutoBuy -BudgetLimit '+[int]$state.Budget+' -StatePath '+(Quote-Arg (Join-Path $script:currentDir 'state.json'))+' -StopFile '+(Quote-Arg $stopPath)+' -RunOutputPath '+(Quote-Arg $run)
+ $args='-NoLogo -NoProfile -ExecutionPolicy Bypass -File '+(Quote-Arg (Join-Path $script:base 'Scan-EpicSeven-Shop.ps1'))+' -GameWindowHandle '+$script:gameView.GameWindowHandle+' -AutoBuy -BudgetLimit '+[int]$state.Budget+' -StatePath '+(Quote-Arg (Join-Path $script:currentDir 'state.json'))+' -StopFile '+(Quote-Arg $stopPath)+' -RunOutputPath '+(Quote-Arg $run)
+ if($script:gameView.IsMuMu){$args+=' -MuMu'}
  $script:worker=Start-Process -FilePath 'powershell.exe' -ArgumentList $args -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
  $footer.Text='运行中。按“停止”后会完成当前交易核对再退出；请勿同时运行旧版刷店脚本。'
  $script:lastLog='';Refresh-View
@@ -276,7 +402,7 @@ function Get-ClearTargets([string]$Root) {
   $statePath=Join-Path $resolved 'state.json'
   if(!(Test-Path -LiteralPath $statePath)) {throw '发现非轮次目录，停止清空。'}
   $state=Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
-  if($state.Phase -in @('PurchasePending','RefreshPending')) {throw '有尚未核实的交易，请先处理后再清空记录。'}
+  # Clearing records is explicitly allowed regardless of transaction phase.
   $resolved
  }
 }
@@ -311,7 +437,7 @@ $clearButton.Add_Click({
    if(!$locked) {throw '仍有后台刷店任务运行，不能清空记录。'}
    $targets=@(Get-ClearTargets $script:sessionRoot)
    if(!$targets.Count) {Reset-Display;return}
-   $answer=[Windows.Forms.MessageBox]::Show($form,('清空全部 '+$targets.Count+' 轮记录、日志及截图？此操作不可恢复，不会修改游戏资源。'),'清空记录',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning,[Windows.Forms.MessageBoxDefaultButton]::Button2)
+   $answer=[Windows.Forms.MessageBox]::Show($form,('清空全部 '+$targets.Count+' 轮记录、日志及截图（包括未核实交易）？此操作不可恢复，不会修改游戏资源。'),'清空记录',[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning,[Windows.Forms.MessageBoxDefaultButton]::Button2)
    if($answer -ne [Windows.Forms.DialogResult]::Yes) {return}
    foreach($target in $targets) {[IO.Directory]::Delete($target,$true)}
    Reset-Display
@@ -368,7 +494,7 @@ if($script:preview) {
   }
  }
  }
- $metricValues[0].Text='174 / 300';$metricValues[0].Font=New-Object Drawing.Font('Microsoft YaHei UI',16)
+ $metricValues[0].Text='174 / 300';$metricValues[0].Font=New-Object Drawing.Font('Microsoft YaHei UI',10)
  $metricSubs[0].Text='剩余 126 石';$metricValues[1].Text='58';$metricSubs[1].Text='演示数据 · 59 页'
  $metricValues[2].Text='15 个';$metricSubs[2].Text='购买 3 批，每批 5 个'
  $metricValues[3].Text='100 个';$metricSubs[3].Text='购买 2 批，每批 50 个'
@@ -387,6 +513,7 @@ if($script:preview) {
 }
 Startup-Log 'Loading saved rounds'
 Load-Rounds
+Update-PreviewLayout
 Startup-Log 'Showing main window'
 $timer.Start()
 try {[void]$form.ShowDialog()} finally {$timer.Stop();$timer.Dispose();$form.Dispose();if($script:ownsPanelMutex){$script:panelMutex.ReleaseMutex()};$script:panelMutex.Dispose()}

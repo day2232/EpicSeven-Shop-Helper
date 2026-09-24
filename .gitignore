@@ -1,0 +1,6 @@
+panel-data/
+*.bak
+*.log
+shop-scan-*/
+shop-budget-*.json
+STOP-EpicSeven
