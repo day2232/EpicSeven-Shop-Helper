@@ -1,0 +1,56 @@
+name: Publish v2.0.0
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release-v2.0.0.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-v2.0.0
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: day2232/EpicSeven-Shop-Helper
+    steps:
+      - name: Package files without running the application
+        run: |
+          python3 - <<'PY'
+          import urllib.request, zipfile, io, hashlib, pathlib
+          commit = "67f82579fca38708e067eb181022eacbb948ac95"
+          data = urllib.request.urlopen(f"https://codeload.github.com/day2232/EpicSeven-Shop-Helper/zip/{commit}", timeout=60).read()
+          names = ["EpicSeven-Shop.exe", "EpicSeven-Panel.ps1", "GamePreview.cs", "GamePreview.ps1", "Resize-EpicSeven.ps1", "Scan-EpicSeven-Shop.ps1", "README.md", ".gitignore"]
+          with zipfile.ZipFile(io.BytesIO(data)) as source:
+              prefix = source.namelist()[0].split("/")[0] + "/"
+              files = {name: source.read(prefix + name) for name in names}
+          files["README.md"] = files["README.md"].decode("utf-8").replace("# 第七史诗商店助手", "# 第七史诗商店助手 v2.0.0").encode("utf-8")
+          files["VERSION.txt"] = b"2.0.0\r\n"
+          files["SHA256SUMS.txt"] = "".join(hashlib.sha256(value).hexdigest() + "  " + name + "\n" for name,value in sorted(files.items())).encode("utf-8")
+          archive = "EpicSeven-Shop-v2.0.0.zip"
+          with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as output:
+              for name,value in files.items():
+                  output.writestr("EpicSeven-Shop-v2.0.0/" + name, value)
+          digest = hashlib.sha256(pathlib.Path(archive).read_bytes()).hexdigest()
+          pathlib.Path(archive + ".sha256.txt").write_text(digest + "  " + archive + "\n")
+          pathlib.Path("release-notes.md").write_text("""## v2.0.0
+          
+          - PC STOVE / MuMu 模拟器连接与窗口内截图预览
+          - 鼠标点击拖动、商店购买识别及数量和价格核对
+          - 未连接时收起预览区域，连接后展开
+          
+          下载 EpicSeven-Shop-v2.0.0.zip，完整解压后运行 EpicSeven-Shop.exe。
+          不包含个人记录和截图。目标60 FPS不代表稳定60 FPS。
+          最近修改未经过完整验证；本次仅打包，未运行测试或购买。
+          """, encoding="utf-8")
+          PY
+      - name: Publish release and assets
+        run: |
+          if gh release view v2.0.0 >/dev/null 2>&1; then
+            echo "v2.0.0 already exists; refusing to overwrite."
+            exit 1
+          fi
+          gh release create v2.0.0 EpicSeven-Shop-v2.0.0.zip EpicSeven-Shop-v2.0.0.zip.sha256.txt --target 67f82579fca38708e067eb181022eacbb948ac95 --title "EpicSeven Shop Helper v2.0.0" --notes-file release-notes.md
